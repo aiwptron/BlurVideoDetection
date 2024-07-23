@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Video Focus Score</title>
-  <script src="opencv.js" async></script>
+  <script id="opencv" src="https://docs.opencv.org/4.x/opencv.js" async></script>
   <style>
     body {
       display: flex;
@@ -24,7 +24,6 @@
   </style>
 </head>
 <body>
-
   <video id="videoInput" width="480" height="360" autoplay></video>
   <div id="focusScore">Focus Score: </div>
   <canvas id="canvasOutput" width="480" height="360"></canvas>
