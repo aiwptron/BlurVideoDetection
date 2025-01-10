@@ -1,33 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Focus Score</title>
-  <script id="opencv" src="https://docs.opencv.org/4.x/opencv.js" async></script>
-  <style>
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      background-color: #f0f0f0;
-    }
-    video, canvas {
-      display: block;
-      margin: 10px;
-    }
-    #focusScore {
-      font-size: 1.5em;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Focus Score</title>
 </head>
 <body>
-  <video id="videoInput" width="480" height="360" autoplay></video>
-  <div id="focusScore">Focus Score: </div>
-  <canvas id="canvasOutput" width="480" height="360"></canvas>
-  
-  <script src="script.js"></script>
+    <h1>Upload an Image to Calculate Focus Score</h1>
+    <input type="file" id="imageUpload" accept="image/*" />
+    <canvas id="imageCanvas" style="display: none;"></canvas>
+    <p id="focusScore"></p>
+
+    <script>
+        document.getElementById('imageUpload').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.getElementById('imageCanvas');
+                        const ctx = canvas.getContext('2d');
+
+                        const captureWidth = 144;
+                        const captureHeight = 144;
+
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+
+                        // Top-left corner
+                        const focusScore1 = calculateFocusScore(ctx, 0, 0, captureWidth, captureHeight);
+                        
+                        // Top-right corner
+                        const focusScore2 = calculateFocusScore(ctx, img.width - captureWidth, 0, captureWidth, captureHeight);
+
+                        const result = document.getElementById('focusScore');
+                        result.textContent = `Focus Score (Top Left): ${focusScore1.toFixed(2)}, Focus Score (Top Right): ${focusScore2.toFixed(2)}`;
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function calculateFocusScore(context, x, y, width, height) {
+            const imageData = context.getImageData(x, y, width, height);
+            const grayscale = convertToGrayscale(imageData);
+            const laplacian = applyLaplacian(grayscale, width, height);
+            return calculateVariance(laplacian);
+        }
+
+        function convertToGrayscale(imageData) {
+            const data = imageData.data;
+            const grayscale = [];
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                grayscale.push(gray);
+            }
+            return grayscale;
+        }
+
+        function applyLaplacian(grayscale, width, height) {
+            const result = new Array(grayscale.length).fill(0);
+            const laplacianKernel = [
+                [0, 1, 0],
+                [1, -4, 1],
+                [0, 1, 0]
+            ];
+
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let sum = 0;
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const pixel = grayscale[(y + ky) * width + (x + kx)];
+                            const weight = laplacianKernel[ky + 1][kx + 1];
+                            sum += pixel * weight;
+                        }
+                    }
+                    result[y * width + x] = sum;
+                }
+            }
+            return result;
+        }
+
+        function calculateVariance(data) {
+            const sum = data.reduce((a, b) => a + b, 0);
+            const mean = sum / data.length;
+
+            const varianceSum = data.reduce((a, b) => a + Math.pow(b - mean, 2), 0);
+            return varianceSum / data.length;
+        }
+    </script>
 </body>
 </html>
