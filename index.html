@@ -56,7 +56,13 @@
             });
 
             function detectBlurBackground(imageElement) {
-                var canvas = document.createElement('canvas');
+                function createCanvas() {
+                    var canvas = document.createElement('canvas');
+                    canvas.width = 480;
+                    canvas.height = 360;
+                    return canvas;
+                }
+                var canvas = createCanvas();
                 var ctx = canvas.getContext('2d');
                 var captureWidth = 144;
                 var captureHeight = 144;
