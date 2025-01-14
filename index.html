@@ -3,95 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Focus Score</title>
+    <title>Blur Background Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+        img {
+            max-width: 480px;
+            max-height: 360px;
+            border: 2px solid #333;
+            margin-bottom: 20px;
+        }
+        .result {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Upload an Image to Calculate Focus Score</h1>
-    <input type="file" id="imageUpload" accept="image/*" />
-    <canvas id="imageCanvas" style="display: none;"></canvas>
-    <p id="focusScore"></p>
+    <h1>Blur Background Detection</h1>
+    <input type="file" id="imageInput" accept="image/*">
+    <img id="uploadedImage" alt="Uploaded Image" style="display:none;">
+    <div class="result" id="result"></div>
 
     <script>
-        document.getElementById('imageUpload').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = new Image();
-                    img.onload = function() {
-                        const canvas = document.getElementById('imageCanvas');
-                        const ctx = canvas.getContext('2d');
+        (function () {
+            var imageInput = document.getElementById('imageInput');
+            var uploadedImage = document.getElementById('uploadedImage');
+            var resultDiv = document.getElementById('result');
 
-                        const captureWidth = 144;
-                        const captureHeight = 144;
-
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        ctx.drawImage(img, 0, 0);
-
-                        // Top-left corner
-                        const focusScore1 = calculateFocusScore(ctx, 0, 0, captureWidth, captureHeight);
-                        
-                        // Top-right corner
-                        const focusScore2 = calculateFocusScore(ctx, img.width - captureWidth, 0, captureWidth, captureHeight);
-
-                        const result = document.getElementById('focusScore');
-                        result.textContent = `Focus Score (Top Left): ${focusScore1.toFixed(2)}, Focus Score (Top Right): ${focusScore2.toFixed(2)}`;
+            imageInput.addEventListener('change', function (event) {
+                var file = event.target.files[0];
+                if (file) {
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        uploadedImage.src = e.target.result;
+                        uploadedImage.style.display = 'block';
+                        detectBlurBackground(uploadedImage);
                     };
-                    img.src = e.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-
-        function calculateFocusScore(context, x, y, width, height) {
-            const imageData = context.getImageData(x, y, width, height);
-            const grayscale = convertToGrayscale(imageData);
-            const laplacian = applyLaplacian(grayscale, width, height);
-            return calculateVariance(laplacian);
-        }
-
-        function convertToGrayscale(imageData) {
-            const data = imageData.data;
-            const grayscale = [];
-            for (let i = 0; i < data.length; i += 4) {
-                const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                grayscale.push(gray);
-            }
-            return grayscale;
-        }
-
-        function applyLaplacian(grayscale, width, height) {
-            const result = new Array(grayscale.length).fill(0);
-            const laplacianKernel = [
-                [0, 1, 0],
-                [1, -4, 1],
-                [0, 1, 0]
-            ];
-
-            for (let y = 1; y < height - 1; y++) {
-                for (let x = 1; x < width - 1; x++) {
-                    let sum = 0;
-                    for (let ky = -1; ky <= 1; ky++) {
-                        for (let kx = -1; kx <= 1; kx++) {
-                            const pixel = grayscale[(y + ky) * width + (x + kx)];
-                            const weight = laplacianKernel[ky + 1][kx + 1];
-                            sum += pixel * weight;
-                        }
-                    }
-                    result[y * width + x] = sum;
+                    reader.readAsDataURL(file);
                 }
+            });
+
+            function detectBlurBackground(imageElement) {
+                var canvas = document.createElement('canvas');
+                var ctx = canvas.getContext('2d');
+                var captureWidth = 144;
+                var captureHeight = 144;
+
+                canvas.width = captureWidth;
+                canvas.height = captureHeight;
+
+                setTimeout(function () {
+                    ctx.drawImage(imageElement, 0, 0, captureWidth, captureHeight, 0, 0, captureWidth, captureHeight);
+                    var focusScore1 = calculateFocusScore(ctx, captureWidth, captureHeight);
+
+                    ctx.clearRect(0, 0, captureWidth, captureHeight);
+                    ctx.drawImage(imageElement, imageElement.width - captureWidth, 0, captureWidth, captureHeight, 0, 0, captureWidth, captureHeight);
+                    var focusScore2 = calculateFocusScore(ctx, captureWidth, captureHeight);
+
+                    var isBlurred = (focusScore1 < 2 && focusScore2 < 2) || (focusScore1 < 1 || focusScore2 < 1);
+                    resultDiv.textContent = 'Focus Score 1: ' + focusScore1.toFixed(2) + ', Focus Score 2: ' + focusScore2.toFixed(2) + '. Background is ' + (isBlurred ? 'Blurred' : 'Not Blurred') + '.';
+
+                }, 2000);
             }
-            return result;
-        }
 
-        function calculateVariance(data) {
-            const sum = data.reduce((a, b) => a + b, 0);
-            const mean = sum / data.length;
+            function calculateFocusScore(context, width, height) {
+                var imageData = context.getImageData(0, 0, width, height);
+                var grayscale = convertToGrayscale(imageData);
+                var laplacian = applyLaplacian(grayscale, width, height);
+                return calculateVariance(laplacian);
+            }
 
-            const varianceSum = data.reduce((a, b) => a + Math.pow(b - mean, 2), 0);
-            return varianceSum / data.length;
-        }
+            function convertToGrayscale(imageData) {
+                var data = imageData.data;
+                var grayscale = [];
+                for (var i = 0; i < data.length; i += 4) {
+                    var gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                    grayscale.push(gray);
+                }
+                return grayscale;
+            }
+
+            function applyLaplacian(grayscale, width, height) {
+                var result = new Array(grayscale.length).fill(0);
+                var laplacianKernel = [
+                    [0, 1, 0],
+                    [1, -4, 1],
+                    [0, 1, 0]
+                ];
+
+                for (var y = 1; y < height - 1; y++) {
+                    for (var x = 1; x < width - 1; x++) {
+                        var sum = 0;
+                        for (var ky = -1; ky <= 1; ky++) {
+                            for (var kx = -1; kx <= 1; kx++) {
+                                var pixel = grayscale[(y + ky) * width + (x + kx)];
+                                var weight = laplacianKernel[ky + 1][kx + 1];
+                                sum += pixel * weight;
+                            }
+                        }
+                        result[y * width + x] = sum;
+                    }
+                }
+                return result;
+            }
+
+            function calculateVariance(data) {
+                var sum = 0;
+                for (var i = 0; i < data.length; i++) {
+                    sum += data[i];
+                }
+                var mean = sum / data.length;
+
+                var varianceSum = 0;
+                for (var j = 0; j < data.length; j++) {
+                    varianceSum += Math.pow(data[j] - mean, 2);
+                }
+                return varianceSum / data.length;
+            }
+        })();
     </script>
 </body>
 </html>
