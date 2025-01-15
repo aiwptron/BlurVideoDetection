@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blur Background Detection </title>
+    <title>Blur and Brightness Detection</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -44,7 +44,7 @@
     </style>
 </head>
 <body>
-    <h1>Blur Background Detection </h1>
+    <h1>Blur and Brightness Detection</h1>
     <input type="file" id="imageInput" accept="image/*" multiple>
     <table id="resultTable">
         <thead>
@@ -54,6 +54,7 @@
                 <th>Brightness 1</th>
                 <th>Focus Score 2</th>
                 <th>Brightness 2</th>
+                <th>Brightness Status</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -67,8 +68,6 @@
             var resultTableBody = document.querySelector('#resultTable tbody');
             var downloadBtn = document.getElementById('downloadCSV');
             var results = [];
-            var BRIGHTNESS_THRESHOLD_BRIGHT = 220; // Brightness threshold for marking as Bright
-            var BRIGHTNESS_THRESHOLD_DARK = 50;  // Brightness threshold for marking as Dark
 
             imageInput.addEventListener('change', function (event) {
                 var files = Array.prototype.slice.call(event.target.files);
@@ -77,31 +76,27 @@
 
                 files.forEach(function (file) {
                     loadImage(file).then(function (imageData) {
-                        calculateMetrics(imageData.image, 480, 360).then(function (metrics) {
-                            var status;
-                            if (metrics.brightness1 > BRIGHTNESS_THRESHOLD_BRIGHT || metrics.brightness2 > BRIGHTNESS_THRESHOLD_BRIGHT) {
-                                status = 'Bright';
-                            } else if (metrics.brightness1 < BRIGHTNESS_THRESHOLD_DARK || metrics.brightness2 < BRIGHTNESS_THRESHOLD_DARK) {
-                                status = 'Dark';
-                            } else if (metrics.focusScore1 < 10 && metrics.focusScore2 < 10) {
-                                status = 'Blurred';
-                            } else {
-                                status = 'Not Blurred';
-                            }
+                        resizeImage(imageData.image, 480, 360).then(function (resizedImage) {
+                            calculateMetrics(resizedImage, 144, 144).then(function (metrics) {
+                                var isBlurred = metrics.focusScore1 < 10 && metrics.focusScore2 < 10;
+                                var brightnessStatus = getBrightnessStatus(metrics.brightness1, metrics.brightness2);
 
-                            addTableRow(file.name, metrics.focusScore1, metrics.brightness1, metrics.focusScore2, metrics.brightness2, status);
-                            results.push({
-                                name: file.name,
-                                focusScore1: metrics.focusScore1,
-                                brightness1: metrics.brightness1,
-                                focusScore2: metrics.focusScore2,
-                                brightness2: metrics.brightness2,
-                                status: status
+                                addTableRow(file.name, metrics.focusScore1, metrics.brightness1, metrics.focusScore2, metrics.brightness2, brightnessStatus, isBlurred ? 'Blurred' : 'Not Blurred');
+
+                                results.push({
+                                    name: file.name,
+                                    focusScore1: metrics.focusScore1,
+                                    brightness1: metrics.brightness1,
+                                    focusScore2: metrics.focusScore2,
+                                    brightness2: metrics.brightness2,
+                                    brightnessStatus: brightnessStatus,
+                                    status: isBlurred ? 'Blurred' : 'Not Blurred'
+                                });
+
+                                if (results.length > 0) {
+                                    downloadBtn.style.display = 'inline-block';
+                                }
                             });
-
-                            if (results.length > 0) {
-                                downloadBtn.style.display = 'inline-block';
-                            }
                         });
                     });
                 });
@@ -121,20 +116,36 @@
                 });
             }
 
-            function calculateMetrics(image, width, height) {
+            function resizeImage(image, width, height) {
                 return new Promise(function (resolve) {
-                    // Resize the image to 480x360
                     var canvas = document.createElement('canvas');
                     var ctx = canvas.getContext('2d');
                     canvas.width = width;
                     canvas.height = height;
                     ctx.drawImage(image, 0, 0, width, height);
+                    var resizedImage = new Image();
+                    resizedImage.src = canvas.toDataURL();
+                    resizedImage.onload = function () {
+                        resolve(resizedImage);
+                    };
+                });
+            }
+
+            function calculateMetrics(image, regionWidth, regionHeight) {
+                return new Promise(function (resolve) {
+                    var canvas = document.createElement('canvas');
+                    var ctx = canvas.getContext('2d');
+                    canvas.width = regionWidth;
+                    canvas.height = regionHeight;
 
                     // Top-Left Region
-                    var metrics1 = calculateRegionMetrics(ctx, 144, 144, 0, 0);
+                    ctx.drawImage(image, 0, 0, regionWidth, regionHeight, 0, 0, regionWidth, regionHeight);
+                    var metrics1 = calculateRegionMetrics(ctx, regionWidth, regionHeight);
 
                     // Top-Right Region
-                    var metrics2 = calculateRegionMetrics(ctx, 144, 144, width - 144, 0);
+                    ctx.clearRect(0, 0, regionWidth, regionHeight);
+                    ctx.drawImage(image, image.width - regionWidth, 0, regionWidth, regionHeight, 0, 0, regionWidth, regionHeight);
+                    var metrics2 = calculateRegionMetrics(ctx, regionWidth, regionHeight);
 
                     resolve({
                         focusScore1: metrics1.focusScore,
@@ -145,8 +156,8 @@
                 });
             }
 
-            function calculateRegionMetrics(context, width, height, offsetX, offsetY) {
-                var imageData = context.getImageData(offsetX, offsetY, width, height);
+            function calculateRegionMetrics(context, width, height) {
+                var imageData = context.getImageData(0, 0, width, height);
                 var data = imageData.data;
                 var grayscale = [];
                 var brightnessSum = 0;
@@ -191,7 +202,19 @@
                 return variance;
             }
 
-            function addTableRow(name, focusScore1, brightness1, focusScore2, brightness2, status) {
+            function getBrightnessStatus(brightness1, brightness2) {
+                var thresholdBright = 200; // Adjust as needed
+                var thresholdLow = 50; // Adjust as needed
+
+                if (brightness1 > thresholdBright && brightness2 > thresholdBright) {
+                    return 'Bright';
+                } else if (brightness1 < thresholdLow && brightness2 < thresholdLow) {
+                    return 'Low';
+                }
+                return 'Normal';
+            }
+
+            function addTableRow(name, focusScore1, brightness1, focusScore2, brightness2, brightnessStatus, status) {
                 var row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${name}</td>
@@ -199,20 +222,21 @@
                     <td>${brightness1.toFixed(2)}</td>
                     <td>${focusScore2.toFixed(2)}</td>
                     <td>${brightness2.toFixed(2)}</td>
+                    <td>${brightnessStatus}</td>
                     <td>${status}</td>
                 `;
                 resultTableBody.appendChild(row);
             }
 
             downloadBtn.addEventListener('click', function () {
-                var csvContent = 'data:text/csv;charset=utf-8,Image Name,Focus Score 1,Brightness 1,Focus Score 2,Brightness 2,Status\n' +
+                var csvContent = 'data:text/csv;charset=utf-8,Image Name,Focus Score 1,Brightness 1,Focus Score 2,Brightness 2,Brightness Status,Status\n' +
                     results.map(function (row) {
-                        return row.name + ',' + row.focusScore1.toFixed(2) + ',' + row.brightness1.toFixed(2) + ',' + row.focusScore2.toFixed(2) + ',' + row.brightness2.toFixed(2) + ',' + row.status;
+                        return `${row.name},${row.focusScore1.toFixed(2)},${row.brightness1.toFixed(2)},${row.focusScore2.toFixed(2)},${row.brightness2.toFixed(2)},${row.brightnessStatus},${row.status}`;
                     }).join('\n');
                 var encodedUri = encodeURI(csvContent);
                 var link = document.createElement('a');
                 link.setAttribute('href', encodedUri);
-                link.setAttribute('download', 'blur_detection_results_with_brightness.csv');
+                link.setAttribute('download', 'blur_brightness_results.csv');
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
